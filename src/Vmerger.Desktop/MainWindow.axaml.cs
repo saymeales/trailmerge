@@ -10,6 +10,7 @@ public sealed partial class MainWindow : Window
 {
     private readonly MainWindowViewModel _viewModel = new();
     private ClipTimelineViewModel? _draggedClip;
+    private DiagnosticsWindow? _diagnosticsWindow;
     private bool _isUserSeeking;
 
     public MainWindow()
@@ -17,6 +18,9 @@ public sealed partial class MainWindow : Window
         InitializeComponent();
         DataContext = _viewModel;
         Opened += OnOpened;
+        ImportFolderMenuItem.Click += ImportFolderButton_OnClick;
+        ImportFilesMenuItem.Click += ImportFilesButton_OnClick;
+        OpenDiagnosticsMenuItem.Click += OpenDiagnosticsButton_OnClick;
         SeekSlider.AddHandler(PointerPressedEvent, SeekSlider_OnPointerPressed, RoutingStrategies.Tunnel | RoutingStrategies.Bubble, handledEventsToo: true);
         SeekSlider.AddHandler(PointerReleasedEvent, SeekSlider_OnPointerReleased, RoutingStrategies.Tunnel | RoutingStrategies.Bubble, handledEventsToo: true);
         SeekSlider.AddHandler(PointerCaptureLostEvent, SeekSlider_OnPointerCaptureLost, RoutingStrategies.Tunnel | RoutingStrategies.Bubble, handledEventsToo: true);
@@ -26,6 +30,10 @@ public sealed partial class MainWindow : Window
     protected override void OnClosed(EventArgs e)
     {
         Opened -= OnOpened;
+        ImportFolderMenuItem.Click -= ImportFolderButton_OnClick;
+        ImportFilesMenuItem.Click -= ImportFilesButton_OnClick;
+        OpenDiagnosticsMenuItem.Click -= OpenDiagnosticsButton_OnClick;
+        _diagnosticsWindow?.Close();
         VideoView.MediaPlayer = null;
         _viewModel.Dispose();
         base.OnClosed(e);
@@ -90,7 +98,7 @@ public sealed partial class MainWindow : Window
 
         await _viewModel.ImportFolderAsync(path);
     }
-
+    
     private async void ImportFilesButton_OnClick(object? sender, RoutedEventArgs e)
     {
         var topLevel = GetTopLevel(this);
@@ -137,9 +145,18 @@ public sealed partial class MainWindow : Window
         _viewModel.DeleteSelectedTrail();
     }
 
-    private void MergeTrailButton_OnClick(object? sender, RoutedEventArgs e)
+    private void MergeSelectedTrailsButton_OnClick(object? sender, RoutedEventArgs e)
     {
-        _viewModel.MergeSelectedTrailIntoPrevious();
+        var trails = TrailListBox.SelectedItems?
+            .OfType<TrailSuggestionViewModel>()
+            .ToArray() ?? [];
+
+        _viewModel.MergeSelectedTrails(trails);
+    }
+
+    private void TrailListBox_OnSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        _viewModel.SelectedTrailCount = TrailListBox.SelectedItems?.Count ?? 0;
     }
 
     private void SplitTrailButton_OnClick(object? sender, RoutedEventArgs e)
@@ -157,14 +174,26 @@ public sealed partial class MainWindow : Window
         _viewModel.DuplicateSelectedClip();
     }
 
-    private void SetStartButton_OnClick(object? sender, RoutedEventArgs e)
+    private void PreviewClipStartButton_OnClick(object? sender, RoutedEventArgs e)
     {
-        _viewModel.SetSelectedClipStartFromPlayhead();
+        if (sender is Control { DataContext: ClipTimelineViewModel clip })
+        {
+            _viewModel.PreviewClipFromStart(clip);
+        }
     }
 
-    private void SetEndButton_OnClick(object? sender, RoutedEventArgs e)
+    private void TransitionPreviewButton_OnClick(object? sender, RoutedEventArgs e)
     {
-        _viewModel.SetSelectedClipEndFromPlayhead();
+        if (sender is Control { DataContext: ClipTimelineViewModel clip })
+        {
+            _viewModel.PreviewClipTransition(clip);
+        }
+    }
+
+    private void VideoSurface_OnPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        _viewModel.TogglePlaybackFromVideoSurface();
+        e.Handled = true;
     }
 
     private void ClearRangeButton_OnClick(object? sender, RoutedEventArgs e)
@@ -206,9 +235,44 @@ public sealed partial class MainWindow : Window
         await _viewModel.ExportSelectedTrailAsync(path);
     }
 
+    private async void ExportAllTrailsButton_OnClick(object? sender, RoutedEventArgs e)
+    {
+        var topLevel = GetTopLevel(this);
+        if (topLevel?.StorageProvider is null)
+        {
+            return;
+        }
+
+        var folders = await topLevel.StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+        {
+            Title = "Export all trails",
+            AllowMultiple = false
+        });
+
+        var folder = folders.Count > 0 ? folders[0] : null;
+        if (folder?.TryGetLocalPath() is not { } path)
+        {
+            return;
+        }
+
+        await _viewModel.ExportAllTrailsAsync(path);
+    }
+
     private void ClearExportOutputButton_OnClick(object? sender, RoutedEventArgs e)
     {
         _viewModel.ClearExportOutput();
+    }
+
+    private void OpenDiagnosticsButton_OnClick(object? sender, RoutedEventArgs e)
+    {
+        if (_diagnosticsWindow is null)
+        {
+            _diagnosticsWindow = new DiagnosticsWindow(_viewModel);
+            _diagnosticsWindow.Closed += (_, _) => _diagnosticsWindow = null;
+        }
+
+        _diagnosticsWindow.Show(this);
+        _diagnosticsWindow.Activate();
     }
 
     private async void TrailClip_OnPointerPressed(object? sender, PointerPressedEventArgs e)

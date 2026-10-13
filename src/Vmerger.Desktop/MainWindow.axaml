@@ -2,6 +2,7 @@
     x:Class="Vmerger.Desktop.MainWindow"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="clr-namespace:Vmerger.Desktop.Controls"
     xmlns:vlc="clr-namespace:LibVLCSharp.Avalonia;assembly=LibVLCSharp.Avalonia"
     Title="vmerger media prototype"
     Width="1180"
@@ -9,24 +10,39 @@
     MinWidth="900"
     MinHeight="560">
     <Grid RowDefinitions="Auto,2*,8,2*" ColumnDefinitions="3*,8,2*" Margin="16" RowSpacing="8" ColumnSpacing="8">
-        <Border Grid.Row="0" Grid.ColumnSpan="3" Padding="12" BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}" BorderThickness="1" CornerRadius="6">
-            <Grid ColumnDefinitions="Auto,Auto,Auto,*" ColumnSpacing="10">
-                <Button x:Name="OpenButton" Content="Open media file" Click="OpenButton_OnClick" />
-                <Button Grid.Column="1" Content="Import folder" Click="ImportFolderButton_OnClick" />
-                <Button Grid.Column="2" Content="Import files" Click="ImportFilesButton_OnClick" />
-                <TextBlock Grid.Column="3" VerticalAlignment="Center" Text="{Binding SelectedFileText}" TextTrimming="CharacterEllipsis" />
+            <Grid ColumnDefinitions="Auto,Auto,Auto,*" ColumnSpacing="8">
+                <Menu>
+                    <MenuItem Header="_File">
+                        <MenuItem x:Name="ImportFolderMenuItem" Header="Import folder" />
+                        <MenuItem x:Name="ImportFilesMenuItem" Header="Import files" />
+                    </MenuItem>
+                    <MenuItem Header="_Tools">
+                        <MenuItem x:Name="OpenDiagnosticsMenuItem" Header="Open diagnostics" />
+                    </MenuItem>
+                </Menu>
             </Grid>
-        </Border>
 
         <Border Grid.Row="1" Grid.Column="0" Background="Black" ClipToBounds="True">
             <vlc:VideoView x:Name="VideoView">
                 <Grid RowDefinitions="*,Auto" Margin="14">
-                    <Button
-                        HorizontalAlignment="Center"
-                        VerticalAlignment="Center"
-                        Padding="20,12"
-                        Command="{Binding PlayPauseCommand}"
-                        Content="{Binding PlayPauseButtonText}" />
+                    <Border Background="Transparent" PointerPressed="VideoSurface_OnPointerPressed">
+                        <Grid>
+                            <Image
+                                Source="{Binding CurrentThumbnail}"
+                                Stretch="Uniform"
+                                IsVisible="{Binding ShowThumbnail}" />
+                            <TextBlock
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                Padding="16,10"
+                                Background="#AA111111"
+                                Foreground="White"
+                                FontSize="18"
+                                FontWeight="SemiBold"
+                                IsVisible="{Binding IsPaused}"
+                                Text="Paused" />
+                        </Grid>
+                    </Border>
                     <Border
                         Grid.Row="1"
                         Background="#AA111111"
@@ -43,8 +59,8 @@
                                 x:Name="SeekSlider"
                                 Grid.Column="1"
                                 Minimum="0"
-                                Maximum="{Binding DurationSeconds}"
-                                Value="{Binding PositionSeconds, Mode=OneWay}"
+                                Maximum="{Binding PlaybackDurationSeconds}"
+                                Value="{Binding PlaybackPositionSeconds, Mode=OneWay}"
                                 IsEnabled="{Binding HasMedia}" />
                             <TextBlock
                                 Grid.Column="2"
@@ -60,22 +76,24 @@
         <GridSplitter Grid.Row="2" Grid.Column="0" Height="8" HorizontalAlignment="Stretch" Background="#333333" />
         <GridSplitter Grid.Row="1" Grid.Column="1" Grid.RowSpan="3" Width="8" VerticalAlignment="Stretch" Background="#333333" />
 
-        <Grid Grid.Row="1" Grid.Column="2" Grid.RowSpan="3" RowDefinitions="Auto,Auto,Auto,2*,Auto,*,Auto,*" RowSpacing="8">
-            <TextBlock FontSize="18" FontWeight="SemiBold" Text="Prototype state" />
-            <StackPanel Grid.Row="1" Spacing="6">
-                <TextBlock Text="{Binding PlaybackStatus}" />
-                <TextBlock Text="{Binding MetadataStatus}" />
-                <TextBlock Text="{Binding KeyframeStatus}" />
+        <Grid Grid.Row="1" Grid.Column="2" Grid.RowSpan="3" RowDefinitions="Auto,Auto,*" RowSpacing="8">
+            <StackPanel Grid.Row="0" Spacing="6">
                 <TextBlock Text="{Binding FolderImportStatus}" />
                 <TextBlock Text="{Binding ExportStatus}" TextWrapping="Wrap" />
             </StackPanel>
-            <WrapPanel Grid.Row="2">
-                <Button Content="Add trail" Click="AddTrailButton_OnClick" />
-                <Button Content="Delete trail" Click="DeleteTrailButton_OnClick" />
-                <Button Content="Merge previous" Click="MergeTrailButton_OnClick" />
-                <Button Content="Export trail" Click="ExportTrailButton_OnClick" />
+            <WrapPanel Grid.Row="1">
+                <Button MinWidth="104" Content="Add trail" Click="AddTrailButton_OnClick" />
+                <Button MinWidth="104" Content="Delete trail" Click="DeleteTrailButton_OnClick" />
+                <Button MinWidth="104" Content="Merge selected" Click="MergeSelectedTrailsButton_OnClick" IsEnabled="{Binding CanMergeSelectedTrails}" />
+                <Button MinWidth="104" Content="Export trail" Click="ExportTrailButton_OnClick" />
+                <Button MinWidth="104" Content="Export all" Click="ExportAllTrailsButton_OnClick" />
             </WrapPanel>
-            <ListBox x:Name="TrailListBox" Grid.Row="3" ItemsSource="{Binding Trails}" SelectedItem="{Binding SelectedTrail, Mode=TwoWay}">
+            <ListBox x:Name="TrailListBox"
+                Grid.Row="2"
+                ItemsSource="{Binding Trails}"
+                SelectedItem="{Binding SelectedTrail, Mode=TwoWay}"
+                SelectionChanged="TrailListBox_OnSelectionChanged"
+                SelectionMode="Multiple">
                 <ListBox.ItemTemplate>
                     <DataTemplate>
                         <Border
@@ -95,7 +113,7 @@
                                         <Border
                                             Padding="6"
                                             Margin="0,2"
-                                            Background="#222222"
+                                            Background="#888899"
                                             BorderBrush="#555555"
                                             BorderThickness="1"
                                             CornerRadius="4"
@@ -115,43 +133,21 @@
                     </DataTemplate>
                 </ListBox.ItemTemplate>
             </ListBox>
-            <Grid Grid.Row="4" ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                <TextBlock FontWeight="SemiBold" Text="Probe diagnostics" />
-            </Grid>
-            <TextBox
-                Grid.Row="5"
-                AcceptsReturn="True"
-                IsReadOnly="True"
-                Text="{Binding ProbeOutput}"
-                TextWrapping="Wrap"
-                FontFamily="Consolas"
-                FontSize="12"
-                VerticalContentAlignment="Top" />
-            <Grid Grid.Row="6" ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                <TextBlock FontWeight="SemiBold" Text="Export diagnostics" />
-                <Button Grid.Column="1" Content="Clear" Click="ClearExportOutputButton_OnClick" />
-            </Grid>
-            <TextBox
-                Grid.Row="7"
-                AcceptsReturn="True"
-                IsReadOnly="True"
-                Text="{Binding ExportOutput}"
-                TextWrapping="Wrap"
-                FontFamily="Consolas"
-                FontSize="12"
-                VerticalContentAlignment="Top" />
         </Grid>
 
         <Grid Grid.Row="3" Grid.Column="0" RowDefinitions="Auto,*" RowSpacing="8">
             <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
                 <TextBlock FontSize="16" FontWeight="SemiBold" Text="Clip timelines" />
                 <WrapPanel Grid.Column="1">
-                    <Button Content="Set start" Click="SetStartButton_OnClick" />
-                    <Button Content="Set end" Click="SetEndButton_OnClick" />
-                    <Button Content="Clear range" Click="ClearRangeButton_OnClick" />
-                    <Button Content="Split before" Click="SplitTrailButton_OnClick" />
-                    <Button Content="Remove clip" Click="RemoveClipButton_OnClick" />
-                    <Button Content="Duplicate clip" Click="DuplicateClipButton_OnClick" />
+                    <CheckBox
+                        Margin="0,0,10,0"
+                        VerticalAlignment="Center"
+                        Content="Continue to next clip"
+                        IsChecked="{Binding ContinueToNextClipOnEnd, Mode=TwoWay}" />
+                    <Button MinWidth="96" Content="Clear range" Click="ClearRangeButton_OnClick" />
+                    <Button MinWidth="96" Content="Split before" Click="SplitTrailButton_OnClick" />
+                    <Button MinWidth="96" Content="Remove clip" Click="RemoveClipButton_OnClick" />
+                    <Button MinWidth="96" Content="Duplicate" Click="DuplicateClipButton_OnClick" />
                 </WrapPanel>
             </Grid>
             <ListBox
@@ -160,16 +156,24 @@
                 SelectedItem="{Binding SelectedClip, Mode=TwoWay}">
                 <ListBox.ItemTemplate>
                     <DataTemplate>
-                        <Grid ColumnDefinitions="180,90,*,150" RowDefinitions="Auto,Auto" ColumnSpacing="12" RowSpacing="4" Margin="0,4">
+                        <Grid ColumnDefinitions="180,90,*,120" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="12" RowSpacing="4" Margin="0,4">
                             <TextBlock Grid.Column="0" FontWeight="SemiBold" Text="{Binding FileName}" TextTrimming="CharacterEllipsis" />
                             <TextBlock Grid.Column="1" Text="{Binding DurationText}" />
-                            <Border Grid.Column="2" Height="18" Background="#333333" BorderBrush="#666666" BorderThickness="1" CornerRadius="3">
-                                <Border HorizontalAlignment="Stretch" Margin="2" Background="#4C8EDA" CornerRadius="2" />
-                            </Border>
-                            <TextBlock Grid.Column="3" Text="{Binding KeyframeSummary}" TextTrimming="CharacterEllipsis" />
+                            <controls:ClipRangeSlider
+                                Grid.Column="2"
+                                Height="34"
+                                Minimum="0"
+                                Maximum="{Binding DurationSeconds}"
+                                RangeStart="{Binding StartSliderSeconds, Mode=TwoWay}"
+                                RangeEnd="{Binding EndSliderSeconds, Mode=TwoWay}" />
+                            <StackPanel Grid.Column="3" Grid.RowSpan="3" Spacing="4">
+                                <Button MinWidth="96" Content="Start" Click="PreviewClipStartButton_OnClick" />
+                                <Button MinWidth="96" Content="Join preview" Click="TransitionPreviewButton_OnClick" />
+                            </StackPanel>
                             <TextBlock Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" FontSize="11" Text="{Binding StartText}" />
-                            <TextBlock Grid.Row="1" Grid.Column="2" FontSize="11" Text="{Binding RangeText}" TextTrimming="CharacterEllipsis" />
-                            <TextBlock Grid.Row="1" Grid.Column="3" FontSize="11" Text="{Binding TimeSourceText}" TextTrimming="CharacterEllipsis" />
+                            <TextBlock Grid.Row="1" Grid.Column="2" FontSize="15" FontWeight="SemiBold" Text="{Binding RangeText}" TextTrimming="CharacterEllipsis" />
+                            <TextBlock Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2" FontSize="11" Text="{Binding TimeSourceText}" TextTrimming="CharacterEllipsis" />
+                            <TextBlock Grid.Row="2" Grid.Column="2" FontSize="11" Text="{Binding KeyframeSummary}" TextTrimming="CharacterEllipsis" />
                         </Grid>
                     </DataTemplate>
                 </ListBox.ItemTemplate>

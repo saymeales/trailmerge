@@ -97,10 +97,9 @@ Do not store selected boundaries only in the UI or VLC state. The project model 
 One main screen:
 
 - Import panel: folder, period, grouping threshold, scan, and cancel.
-- Trail list: name, clip count, duration, and validation status.
-- Selected trail's clip list: filename, time, range, and order; controls for changing its contents.
-- Video area with play/pause, current time, and a timeline showing keyframes.
-- Previous/next keyframe, set start/end, and reset range buttons.
+- Trails overview: list of trails, with each trail's clips visible enough to understand group contents; show trail name, clip count, duration, and validation status.
+- Trail editor view: selected trail's clip list, video player, play/pause, current time, keyframe timeline, previous/next keyframe, set start/end, and reset range buttons.
+- In the trail editor view, the selected trail's clip list shows filename, time, range, and order; controls allow changing its contents.
 - Trail name, output directory, export selected/all, progress, and errors.
 
 Move and reorder buttons are sufficient for the MVP; drag-and-drop is optional.
