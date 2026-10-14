@@ -12,12 +12,14 @@ public sealed partial class MainWindow : Window
     private ClipTimelineViewModel? _draggedClip;
     private DiagnosticsWindow? _diagnosticsWindow;
     private bool _isUserSeeking;
+    private bool _canClose;
 
     public MainWindow()
     {
         InitializeComponent();
         DataContext = _viewModel;
         Opened += OnOpened;
+        Closing += MainWindow_OnClosing;
         ImportFolderMenuItem.Click += ImportFolderButton_OnClick;
         ImportFilesMenuItem.Click += ImportFilesButton_OnClick;
         OpenDiagnosticsMenuItem.Click += OpenDiagnosticsButton_OnClick;
@@ -39,9 +41,21 @@ public sealed partial class MainWindow : Window
         base.OnClosed(e);
     }
 
-    private void OnOpened(object? sender, EventArgs e)
+    private async void OnOpened(object? sender, EventArgs e)
     {
         AttachPlayerToVideoView();
+        await _viewModel.RestoreProjectAsync();
+    }
+
+    private async void MainWindow_OnClosing(object? sender, WindowClosingEventArgs e)
+    {
+        if (_canClose) return;
+        e.Cancel = true;
+        if (!_viewModel.CanEditProject) return;
+        IsEnabled = false;
+        await _viewModel.FlushProjectAsync();
+        _canClose = true;
+        Close();
     }
 
     private async void OpenButton_OnClick(object? sender, RoutedEventArgs e)
@@ -54,7 +68,7 @@ public sealed partial class MainWindow : Window
 
         var files = await topLevel.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
         {
-            Title = "Open media file",
+            Title = "Open Media File",
             AllowMultiple = false,
             FileTypeFilter =
             [
@@ -86,7 +100,7 @@ public sealed partial class MainWindow : Window
 
         var folders = await topLevel.StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
         {
-            Title = "Import media folder",
+            Title = "Import Media Folder",
             AllowMultiple = false
         });
 
@@ -109,7 +123,7 @@ public sealed partial class MainWindow : Window
 
         var files = await topLevel.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
         {
-            Title = "Import selected media files",
+            Title = "Import Selected Media Files",
             AllowMultiple = true,
             FileTypeFilter =
             [
@@ -216,7 +230,7 @@ public sealed partial class MainWindow : Window
 
         var file = await topLevel.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
         {
-            Title = "Export selected trail",
+            Title = "Export Selected Trail",
             SuggestedFileName = $"{_viewModel.SelectedTrail.Name}.mp4",
             FileTypeChoices =
             [
@@ -245,7 +259,7 @@ public sealed partial class MainWindow : Window
 
         var folders = await topLevel.StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
         {
-            Title = "Export all trails",
+            Title = "Export All Trails",
             AllowMultiple = false
         });
 
@@ -255,7 +269,30 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        await _viewModel.ExportAllTrailsAsync(path);
+        if (await _viewModel.ExportAllTrailsAsync(path))
+        {
+            var dialog = new Window
+            {
+                Title = "Close Project?", Width = 400, Height = 180,
+                CanResize = false, WindowStartupLocation = WindowStartupLocation.CenterOwner
+            };
+            var yes = new Button { Content = "Yes, Close Project", MinWidth = 130 };
+            yes.Classes.Add("destructive");
+            var no = new Button { Content = "No, Keep Project", MinWidth = 130 };
+            yes.Click += (_, _) => dialog.Close(true);
+            no.Click += (_, _) => dialog.Close(false);
+            dialog.Content = new StackPanel
+            {
+                Margin = new Avalonia.Thickness(20), Spacing = 16,
+                Children =
+                {
+                    new TextBlock { Text = "Export completed. Close project?", FontSize = 18 },
+                    new TextBlock { Text = "This clears the saved project. Recordings and exports stay." },
+                    new StackPanel { Orientation = Avalonia.Layout.Orientation.Horizontal, Spacing = 12, Children = { yes, no } }
+                }
+            };
+            if (await dialog.ShowDialog<bool>(this)) await _viewModel.CloseProjectAsync();
+        }
     }
 
     private void ClearExportOutputButton_OnClick(object? sender, RoutedEventArgs e)
@@ -309,6 +346,7 @@ public sealed partial class MainWindow : Window
 
     private void MainWindow_OnKeyDown(object? sender, KeyEventArgs e)
     {
+        if (!_viewModel.CanEditProject) return;
         if (e.Source is TextBox)
         {
             return;

@@ -1,0 +1,38 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!-- Functional roles. All application color values belong here. -->
+    <Color x:Key="CanvasColor">#ECE9D8</Color>
+    <Color x:Key="SurfaceColor">#F5F4EE</Color>
+    <Color x:Key="RaisedSurfaceColor">#FFFFFF</Color>
+    <Color x:Key="HoverSurfaceColor">#F0F4FA</Color>
+    <Color x:Key="BorderColor">#96958B</Color>
+    <Color x:Key="TextColor">#202020</Color>
+    <Color x:Key="SecondaryTextColor">#59594F</Color>
+    <Color x:Key="ActionColor">#255E98</Color>
+    <Color x:Key="ActionHoverColor">#174574</Color>
+    <Color x:Key="OnActionColor">#FFFFFF</Color>
+    <Color x:Key="SelectionColor">#DCE8F5</Color>
+    <Color x:Key="SuccessColor">#236B37</Color>
+    <Color x:Key="WarningColor">#805800</Color>
+    <Color x:Key="ErrorColor">#A4262C</Color>
+    <Color x:Key="VideoTextColor">#FFFFFF</Color>
+    <Color x:Key="VideoSurfaceColor">#000000</Color>
+    <Color x:Key="VideoOverlayColor">#E6202020</Color>
+
+    <SolidColorBrush x:Key="CanvasBrush" Color="{DynamicResource CanvasColor}" />
+    <SolidColorBrush x:Key="SurfaceBrush" Color="{DynamicResource SurfaceColor}" />
+    <SolidColorBrush x:Key="RaisedSurfaceBrush" Color="{DynamicResource RaisedSurfaceColor}" />
+    <SolidColorBrush x:Key="HoverSurfaceBrush" Color="{DynamicResource HoverSurfaceColor}" />
+    <SolidColorBrush x:Key="BorderBrush" Color="{DynamicResource BorderColor}" />
+    <SolidColorBrush x:Key="TextBrush" Color="{DynamicResource TextColor}" />
+    <SolidColorBrush x:Key="SecondaryTextBrush" Color="{DynamicResource SecondaryTextColor}" />
+    <SolidColorBrush x:Key="ActionBrush" Color="{DynamicResource ActionColor}" />
+    <SolidColorBrush x:Key="ActionHoverBrush" Color="{DynamicResource ActionHoverColor}" />
+    <SolidColorBrush x:Key="OnActionBrush" Color="{DynamicResource OnActionColor}" />
+    <SolidColorBrush x:Key="SelectionBrush" Color="{DynamicResource SelectionColor}" />
+    <SolidColorBrush x:Key="SuccessBrush" Color="{DynamicResource SuccessColor}" />
+    <SolidColorBrush x:Key="WarningBrush" Color="{DynamicResource WarningColor}" />
+    <SolidColorBrush x:Key="ErrorBrush" Color="{DynamicResource ErrorColor}" />
+    <SolidColorBrush x:Key="VideoTextBrush" Color="{DynamicResource VideoTextColor}" />
+    <SolidColorBrush x:Key="VideoSurfaceBrush" Color="{DynamicResource VideoSurfaceColor}" />
+    <SolidColorBrush x:Key="VideoOverlayBrush" Color="{DynamicResource VideoOverlayColor}" />
+</ResourceDictionary>

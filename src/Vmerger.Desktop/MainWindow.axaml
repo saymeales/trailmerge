@@ -10,19 +10,19 @@
     MinWidth="900"
     MinHeight="560">
     <Grid RowDefinitions="Auto,2*,8,2*" ColumnDefinitions="3*,8,2*" Margin="16" RowSpacing="8" ColumnSpacing="8">
-            <Grid ColumnDefinitions="Auto,Auto,Auto,*" ColumnSpacing="8">
+            <Grid ColumnDefinitions="Auto,Auto,Auto,*" ColumnSpacing="8" IsEnabled="{Binding CanEditProject}">
                 <Menu>
                     <MenuItem Header="_File">
-                        <MenuItem x:Name="ImportFolderMenuItem" Header="Import folder" />
-                        <MenuItem x:Name="ImportFilesMenuItem" Header="Import files" />
+                        <MenuItem x:Name="ImportFolderMenuItem" Header="Import Folder" />
+                        <MenuItem x:Name="ImportFilesMenuItem" Header="Import Files" />
                     </MenuItem>
                     <MenuItem Header="_Tools">
-                        <MenuItem x:Name="OpenDiagnosticsMenuItem" Header="Open diagnostics" />
+                        <MenuItem x:Name="OpenDiagnosticsMenuItem" Header="Open Diagnostics" />
                     </MenuItem>
                 </Menu>
             </Grid>
 
-        <Border Grid.Row="1" Grid.Column="0" Background="Black" ClipToBounds="True">
+        <Border Grid.Row="1" Grid.Column="0" Background="{DynamicResource VideoSurfaceBrush}" ClipToBounds="True">
             <vlc:VideoView x:Name="VideoView">
                 <Grid RowDefinitions="*,Auto" Margin="14">
                     <Border Background="Transparent" PointerPressed="VideoSurface_OnPointerPressed">
@@ -35,8 +35,8 @@
                                 HorizontalAlignment="Center"
                                 VerticalAlignment="Center"
                                 Padding="16,10"
-                                Background="#AA111111"
-                                Foreground="White"
+                                Background="{DynamicResource VideoOverlayBrush}"
+                                Foreground="{DynamicResource VideoTextBrush}"
                                 FontSize="18"
                                 FontWeight="SemiBold"
                                 IsVisible="{Binding IsPaused}"
@@ -45,15 +45,15 @@
                     </Border>
                     <Border
                         Grid.Row="1"
-                        Background="#AA111111"
-                        BorderBrush="#55444444"
+                        Background="{DynamicResource VideoOverlayBrush}"
+                        BorderBrush="{DynamicResource BorderBrush}"
                         BorderThickness="1"
-                        CornerRadius="6"
+                        CornerRadius="0"
                         Padding="10">
                         <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
                             <TextBlock
                                 VerticalAlignment="Center"
-                                Foreground="White"
+                                Foreground="{DynamicResource VideoTextBrush}"
                                 Text="{Binding PositionText}" />
                             <Slider
                                 x:Name="SeekSlider"
@@ -65,7 +65,7 @@
                             <TextBlock
                                 Grid.Column="2"
                                 VerticalAlignment="Center"
-                                Foreground="White"
+                                Foreground="{DynamicResource VideoTextBrush}"
                                 Text="{Binding DurationText}" />
                         </Grid>
                     </Border>
@@ -73,23 +73,27 @@
             </vlc:VideoView>
         </Border>
 
-        <GridSplitter Grid.Row="2" Grid.Column="0" Height="8" HorizontalAlignment="Stretch" Background="#333333" />
-        <GridSplitter Grid.Row="1" Grid.Column="1" Grid.RowSpan="3" Width="8" VerticalAlignment="Stretch" Background="#333333" />
+        <GridSplitter Grid.Row="2" Grid.Column="0" Height="8" HorizontalAlignment="Stretch" />
+        <GridSplitter Grid.Row="1" Grid.Column="1" Grid.RowSpan="3" Width="8" VerticalAlignment="Stretch" />
 
-        <Grid Grid.Row="1" Grid.Column="2" Grid.RowSpan="3" RowDefinitions="Auto,Auto,*" RowSpacing="8">
+        <Grid Grid.Row="1" Grid.Column="2" Grid.RowSpan="3" RowDefinitions="Auto,Auto,*,Auto,Auto" RowSpacing="8">
             <StackPanel Grid.Row="0" Spacing="6">
-                <TextBlock Text="{Binding FolderImportStatus}" />
-                <TextBlock Text="{Binding ExportStatus}" TextWrapping="Wrap" />
+                <TextBlock Classes="secondary" Text="{Binding FolderImportStatus}" />
+                <TextBlock Classes="secondary" Text="{Binding ProjectStatus}" TextWrapping="Wrap" />
+
             </StackPanel>
-            <WrapPanel Grid.Row="1">
-                <Button MinWidth="104" Content="Add trail" Click="AddTrailButton_OnClick" />
-                <Button MinWidth="104" Content="Delete trail" Click="DeleteTrailButton_OnClick" />
-                <Button MinWidth="104" Content="Merge selected" Click="MergeSelectedTrailsButton_OnClick" IsEnabled="{Binding CanMergeSelectedTrails}" />
-                <Button MinWidth="104" Content="Export trail" Click="ExportTrailButton_OnClick" />
-                <Button MinWidth="104" Content="Export all" Click="ExportAllTrailsButton_OnClick" />
-            </WrapPanel>
+            <StackPanel Grid.Row="1" Spacing="6">
+                <TextBlock FontWeight="SemiBold" Text="Trails" />
+                <WrapPanel IsEnabled="{Binding CanEditProject}">
+                <Button MinWidth="104" Content="Add Trail" Click="AddTrailButton_OnClick" />
+                <Button MinWidth="104" Classes="destructive" Content="Delete Trail" Click="DeleteTrailButton_OnClick" />
+                <Button MinWidth="104" Content="Merge Selected" Click="MergeSelectedTrailsButton_OnClick" IsEnabled="{Binding CanMergeSelectedTrails}" />
+
+                </WrapPanel>
+            </StackPanel>
             <ListBox x:Name="TrailListBox"
                 Grid.Row="2"
+                IsEnabled="{Binding CanEditProject}"
                 ItemsSource="{Binding Trails}"
                 SelectedItem="{Binding SelectedTrail, Mode=TwoWay}"
                 SelectionChanged="TrailListBox_OnSelectionChanged"
@@ -98,31 +102,32 @@
                     <DataTemplate>
                         <Border
                             Padding="6"
-                            BorderBrush="#555555"
                             BorderThickness="1"
-                            CornerRadius="6"
-                            DragDrop.AllowDrop="True"
+                            CornerRadius="0"
+                            Classes="panel" DragDrop.AllowDrop="True"
                             DragDrop.DragOver="TrailDrop_OnDragOver"
                             DragDrop.Drop="TrailDrop_OnDrop">
                         <StackPanel Spacing="6">
-                            <TextBox FontWeight="SemiBold" Text="{Binding Name, Mode=TwoWay}" />
-                            <TextBlock Text="{Binding Summary}" />
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="Trail Name (Editable)" Classes="secondary" FontSize="11" />
+                                <TextBox Classes="trail-name" FontWeight="SemiBold" Text="{Binding Name, Mode=TwoWay}" Watermark="Enter Trail Name" />
+                            </StackPanel>
+                            <TextBlock Classes="secondary" Text="{Binding Summary}" />
                             <ItemsControl ItemsSource="{Binding Clips}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
                                         <Border
                                             Padding="6"
                                             Margin="0,2"
-                                            Background="#888899"
-                                            BorderBrush="#555555"
+                                            Classes="clip"
                                             BorderThickness="1"
-                                            CornerRadius="4"
+                                            CornerRadius="0"
                                             PointerPressed="TrailClip_OnPointerPressed">
                                             <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="8">
                                                 <TextBlock FontWeight="SemiBold" Text="{Binding FileName}" TextTrimming="CharacterEllipsis" />
                                                 <TextBlock Grid.Column="1" Text="{Binding DurationText}" />
                                                 <TextBlock Grid.Row="1" FontSize="11" Text="{Binding RangeText}" />
-                                                <TextBlock Grid.Row="1" Grid.Column="1" FontSize="11" Text="{Binding KeyframeSummary}" />
+                                                <TextBlock Grid.Row="1" Grid.Column="1" FontSize="11" Classes="secondary" Text="{Binding KeyframeSummary}" />
                                             </Grid>
                                         </Border>
                                     </DataTemplate>
@@ -133,20 +138,38 @@
                     </DataTemplate>
                 </ListBox.ItemTemplate>
             </ListBox>
+            <Grid Grid.Row="4" ColumnDefinitions="Auto,Auto,*" ColumnSpacing="8" Margin="0,8,0,0">
+                <Button Grid.Column="0" MinWidth="104" VerticalAlignment="Center"
+                        IsEnabled="{Binding CanEditProject}" Classes="primary" Content="Export Trail"
+                        Click="ExportTrailButton_OnClick" />
+                <Button Grid.Column="1" MinWidth="104" VerticalAlignment="Center"
+                        IsEnabled="{Binding CanEditProject}" Classes="primary" Content="Export All"
+                        Click="ExportAllTrailsButton_OnClick" />
+                <StackPanel Grid.Column="2" Spacing="6" VerticalAlignment="Center">
+                    <TextBlock Classes.error="{Binding HasExportError}" Classes.success="{Binding ExportSucceeded}"
+                               Text="{Binding ExportStatus}" FontSize="14" FontWeight="SemiBold" TextWrapping="Wrap" />
+                    <ProgressBar Minimum="0" Maximum="100" Value="{Binding ExportProgress}" Height="20"
+                                 IsVisible="{Binding IsExporting}" />
+                    <TextBlock Classes="secondary" Text="{Binding ExportProgressText}"
+                               IsVisible="{Binding IsExporting}" TextWrapping="Wrap" />
+                </StackPanel>
+            </Grid>
+          
+
         </Grid>
 
-        <Grid Grid.Row="3" Grid.Column="0" RowDefinitions="Auto,*" RowSpacing="8">
+        <Grid Grid.Row="3" Grid.Column="0" RowDefinitions="Auto,*" RowSpacing="8" IsEnabled="{Binding CanEditProject}">
             <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                <TextBlock FontSize="16" FontWeight="SemiBold" Text="Clip timelines" />
+                <TextBlock FontSize="16" FontWeight="SemiBold" Text="Clip Timelines" />
                 <WrapPanel Grid.Column="1">
                     <CheckBox
                         Margin="0,0,10,0"
                         VerticalAlignment="Center"
                         Content="Continue to next clip"
                         IsChecked="{Binding ContinueToNextClipOnEnd, Mode=TwoWay}" />
-                    <Button MinWidth="96" Content="Clear range" Click="ClearRangeButton_OnClick" />
-                    <Button MinWidth="96" Content="Split before" Click="SplitTrailButton_OnClick" />
-                    <Button MinWidth="96" Content="Remove clip" Click="RemoveClipButton_OnClick" />
+                    <Button MinWidth="96" Content="Clear Range" Click="ClearRangeButton_OnClick" />
+                    <Button MinWidth="96" Content="Split Before" Click="SplitTrailButton_OnClick" />
+                    <Button MinWidth="96" Classes="destructive" Content="Remove Clip" Click="RemoveClipButton_OnClick" />
                     <Button MinWidth="96" Content="Duplicate" Click="DuplicateClipButton_OnClick" />
                 </WrapPanel>
             </Grid>
@@ -166,14 +189,14 @@
                                 Maximum="{Binding DurationSeconds}"
                                 RangeStart="{Binding StartSliderSeconds, Mode=TwoWay}"
                                 RangeEnd="{Binding EndSliderSeconds, Mode=TwoWay}" />
-                            <StackPanel Grid.Column="3" Grid.RowSpan="3" Spacing="4">
-                                <Button MinWidth="96" Content="Start" Click="PreviewClipStartButton_OnClick" />
-                                <Button MinWidth="96" Content="Join preview" Click="TransitionPreviewButton_OnClick" />
+                            <StackPanel  Grid.Column="3" Grid.RowSpan="3" Spacing="4">
+                                <Button Width="108" Content="Start" Click="PreviewClipStartButton_OnClick" />
+                                <Button Width="108" Content="Join Preview" Click="TransitionPreviewButton_OnClick" />
                             </StackPanel>
-                            <TextBlock Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" FontSize="11" Text="{Binding StartText}" />
+                            <TextBlock Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" FontSize="11" Classes="secondary" Text="{Binding StartText}" />
                             <TextBlock Grid.Row="1" Grid.Column="2" FontSize="15" FontWeight="SemiBold" Text="{Binding RangeText}" TextTrimming="CharacterEllipsis" />
-                            <TextBlock Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2" FontSize="11" Text="{Binding TimeSourceText}" TextTrimming="CharacterEllipsis" />
-                            <TextBlock Grid.Row="2" Grid.Column="2" FontSize="11" Text="{Binding KeyframeSummary}" TextTrimming="CharacterEllipsis" />
+                            <TextBlock Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2" FontSize="11" Classes="secondary" Text="{Binding TimeSourceText}" TextTrimming="CharacterEllipsis" />
+                            <TextBlock Grid.Row="2" Grid.Column="2" FontSize="11" Classes="secondary" Text="{Binding KeyframeSummary}" TextTrimming="CharacterEllipsis" />
                         </Grid>
                     </DataTemplate>
                 </ListBox.ItemTemplate>

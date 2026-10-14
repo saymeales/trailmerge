@@ -50,6 +50,8 @@ public sealed class MediaPrototypeSession(FolderTrailImportService folderTrailIm
             : null;
     }
 
+    public void ClearKeyframeCache() => _keyframeTasks.Clear();
+
     public void StartKeyframeIndexing(IReadOnlyList<SourceClip> clips)
     {
         var paths = clips

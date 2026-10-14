@@ -1,8 +1,28 @@
 <Application
     x:Class="Vmerger.Desktop.App"
     xmlns="https://github.com/avaloniaui"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    RequestedThemeVariant="Light">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceInclude Source="/Themes/Colors.axaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Application.Resources>
     <Application.Styles>
-        <FluentTheme />
+        <FluentTheme>
+            <FluentTheme.Palettes>
+                <ColorPaletteResources x:Key="Light"
+                    Accent="{StaticResource ActionColor}"
+                    RegionColor="{StaticResource CanvasColor}"
+                    ChromeLow="{StaticResource SurfaceColor}"
+                    ChromeMedium="{StaticResource RaisedSurfaceColor}"
+                    BaseHigh="{StaticResource TextColor}"
+                    BaseMedium="{StaticResource SecondaryTextColor}"
+                    ErrorText="{StaticResource ErrorColor}" />
+            </FluentTheme.Palettes>
+        </FluentTheme>
+        <StyleInclude Source="/Themes/AppStyles.axaml" />
     </Application.Styles>
 </Application>

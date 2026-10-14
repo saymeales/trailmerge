@@ -1,0 +1,94 @@
+<Styles xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="clr-namespace:Vmerger.Desktop.Controls">
+    <Style Selector="Window">
+        <Setter Property="Background" Value="{DynamicResource CanvasBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+    </Style>
+    <Style Selector="Button">
+        <Setter Property="CornerRadius" Value="0" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+    </Style>
+    <Style Selector="TextBox">
+        <Setter Property="CornerRadius" Value="0" />
+    </Style>
+    <Style Selector="TextBox.trail-name">
+        <Setter Property="Background" Value="{DynamicResource RaisedSurfaceBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+    </Style>
+    <Style Selector="Border.status">
+        <Setter Property="Background" Value="{DynamicResource CanvasBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+    </Style>
+    <Style Selector="Border.status.active">
+        <Setter Property="BorderBrush" Value="{DynamicResource ActionBrush}" />
+    </Style>
+    <Style Selector="TextBlock.secondary">
+        <Setter Property="Foreground" Value="{DynamicResource SecondaryTextBrush}" />
+    </Style>
+    <Style Selector="TextBlock.error">
+        <Setter Property="Foreground" Value="{DynamicResource ErrorBrush}" />
+    </Style>
+    <Style Selector="TextBlock.success">
+        <Setter Property="Foreground" Value="{DynamicResource SuccessBrush}" />
+    </Style>
+    <Style Selector="Border.panel">
+        <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+    </Style>
+    <Style Selector="Border.clip">
+        <Setter Property="Background" Value="{DynamicResource RaisedSurfaceBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+    </Style>
+    <Style Selector="Border.clip:pointerover">
+        <Setter Property="Background" Value="{DynamicResource HoverSurfaceBrush}" />
+    </Style>
+    <Style Selector="Border.panel.active">
+        <Setter Property="BorderBrush" Value="{DynamicResource ActionBrush}" />
+    </Style>
+    <Style Selector="GridSplitter">
+        <Setter Property="Background" Value="{DynamicResource BorderBrush}" />
+    </Style>
+    <Style Selector="GridSplitter:pointerover">
+        <Setter Property="Background" Value="{DynamicResource ActionBrush}" />
+    </Style>
+    <Style Selector="Button.primary">
+        <Setter Property="Background" Value="{DynamicResource ActionBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource OnActionBrush}" />
+    </Style>
+    <Style Selector="Button.primary:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource ActionHoverBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource OnActionBrush}" />
+    </Style>
+    <Style Selector="Button.primary:pressed /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource ActionBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource OnActionBrush}" />
+    </Style>
+    <Style Selector="Button.destructive">
+        <Setter Property="Foreground" Value="{DynamicResource ErrorBrush}" />
+    </Style>
+    <Style Selector="Button.destructive:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Foreground" Value="{DynamicResource ErrorBrush}" />
+    </Style>
+    <Style Selector="ListBox">
+        <Setter Property="Background" Value="{DynamicResource CanvasBrush}" />
+    </Style>
+    <Style Selector="ListBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource SelectionBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource ActionBrush}" />
+    </Style>
+    <Style Selector="ListBoxItem:selected Border.panel">
+        <Setter Property="Background" Value="{DynamicResource SelectionBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource ActionBrush}" />
+    </Style>
+    <Style Selector="controls|ClipRangeSlider">
+        <Setter Property="TrackBrush" Value="{DynamicResource BorderBrush}" />
+        <Setter Property="SelectedRangeBrush" Value="{DynamicResource ActionBrush}" />
+        <Setter Property="ThumbBrush" Value="{DynamicResource RaisedSurfaceBrush}" />
+        <Setter Property="ThumbBorderBrush" Value="{DynamicResource ActionBrush}" />
+    </Style>
+    <Style Selector="controls|ClipRangeSlider:disabled">
+        <Setter Property="Opacity" Value="0.45" />
+    </Style>
+</Styles>

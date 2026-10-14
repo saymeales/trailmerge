@@ -12,26 +12,21 @@ using Vmerger.Media.Import;
 
 namespace Vmerger.Desktop.ViewModels;
 
-public sealed class MainWindowViewModel : ObservableObject, IDisposable
+public sealed class MainWindowViewModel : ObservableObject, IDisposable, IProjectState
 {
     private const double TransitionPreviewGap = 3;
-    private readonly LibVLC _libVlc;
     private readonly FfprobeService _ffprobe = new();
     private readonly StreamCopyExportService _exportService = new();
     private readonly MediaPrototypeSession _mediaSession = MediaPrototypeSession.CreateDefault();
-    private readonly DispatcherTimer _playbackTimer;
     private CancellationTokenSource? _probeCancellation;
     private CancellationTokenSource? _folderImportCancellation;
-    private LibVLCSharp.Shared.Media? _currentMedia;
-    private LibVLCSharp.Shared.Media? _preloadedNextMedia;
-    private ClipTimelineViewModel? _preloadedNextClip;
     private string _selectedFileText = "No file selected";
     private string _playbackStatus = "Playback: idle";
     private string _metadataStatus = "Metadata: waiting for file";
     private string _keyframeStatus = "Keyframes: waiting for file";
     private string _folderImportStatus = "Folder import: waiting";
     private string _probeOutput = "";
-    private string _exportStatus = "Export: waiting";
+    private string _exportStatus = "Waiting";
     private string _exportOutput = "";
     private int _selectedTrailCount;
     private bool _hasMedia;
@@ -51,27 +46,131 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     private IReadOnlyList<double> _keyframeSeconds = [];
     private bool _isUpdatingPlaybackPosition;
     private bool _isDisposed;
+    private readonly TemporaryProjectStore _projectStore = new(TemporaryProjectStore.DefaultPath);
+    private ProjectAutosave? _autosave;
+    private string _projectStatus = "Project: loading";
+    private string? _exportDirectory;
+    private bool _isExporting;
+    private bool _isProjectLoading = true;
+    private bool _isImporting;
+    private double _exportProgress;
+    private string _exportProgressText = "";
+    private bool _hasExportError;
+    private bool _exportSucceeded;
+
+    public bool HasExportError => _hasExportError;
+    public bool ExportSucceeded => _exportSucceeded;
+
+    private void SetExportOutcome(bool? succeeded)
+    {
+        _hasExportError = succeeded == false;
+        _exportSucceeded = succeeded == true;
+        OnPropertyChanged(nameof(HasExportError));
+        OnPropertyChanged(nameof(ExportSucceeded));
+    }
+
+    public string ProjectStatus { get => _projectStatus; internal set => SetProperty(ref _projectStatus, value); }
+    string IProjectState.ProjectStatus { get => ProjectStatus; set => ProjectStatus = value; }
+    public string? ExportDirectory { get => _exportDirectory; private set => SetProperty(ref _exportDirectory, value); }
+    public bool CanEditProject => !_isExporting && !_isProjectLoading && !_isImporting;
+    public bool IsExporting
+    {
+        get => _isExporting;
+        private set { if (SetProperty(ref _isExporting, value)) OnPropertyChanged(nameof(CanEditProject)); }
+    }
+    public double ExportProgress { get => _exportProgress; private set => SetProperty(ref _exportProgress, value); }
+    public string ExportProgressText { get => _exportProgressText; private set => SetProperty(ref _exportProgressText, value); }
+
+    public async Task RestoreProjectAsync()
+    {
+        try
+        {
+            var project = await _projectStore.LoadAsync();
+            if (project is not null)
+            {
+                foreach (var trail in project.Trails)
+                {
+                    var clips = trail.Clips.Select(saved => new ClipTimelineViewModel(saved.Source)
+                    { StartSeconds = saved.StartSeconds, EndSeconds = saved.EndSeconds }).ToArray();
+                    Trails.Add(new TrailSuggestionViewModel(trail.Name, clips));
+                    foreach (var clip in clips)
+                    {
+                        if (clip.SourceIssue is null) _ = TrackKeyframesAsync(clip);
+                        else clip.KeyframeSummary = clip.SourceIssue;
+                    }
+                }
+                ContinueToNextClipOnEnd = project.ContinueToNextClip;
+                ExportDirectory = project.ExportDirectory;
+                _selectedTrail = Trails.FirstOrDefault();
+                OnPropertyChanged(nameof(SelectedTrail));
+                var issues = Trails.SelectMany(trail => trail.Clips).Count(clip => clip.SourceIssue is not null);
+                ProjectStatus = issues == 0 ? "Project: restored" : $"Project: restored; {issues} missing or changed source(s)";
+            }
+            else ProjectStatus = "Project: autosave ready";
+            _autosave = new ProjectAutosave(this, _projectStore);
+            _autosave.Start();
+        }
+        catch (Exception ex)
+        {
+            ProjectStatus = $"Project: restore failed; saved JSON preserved, autosave disabled - {ex.Message}";
+        }
+        finally
+        {
+            _isProjectLoading = false;
+            OnPropertyChanged(nameof(CanEditProject));
+        }
+    }
+
+    public Task FlushProjectAsync() => _autosave?.FlushAsync() ?? Task.CompletedTask;
+
+    public async Task CloseProjectAsync()
+    {
+        _autosave?.Dispose();
+        await FlushProjectAsync();
+        try { _projectStore.Delete(); }
+        catch (Exception ex)
+        {
+            ProjectStatus = $"Project: could not clean saved project - {ex.Message}";
+            _autosave?.Start();
+            return;
+        }
+        _probeCancellation?.Cancel();
+        _folderImportCancellation?.Cancel();
+        Player.ClearMedia();
+        SelectedClip = null;
+        _mediaSession.ClearKeyframeCache();
+        SelectedTrail = null;
+        Trails.Clear();
+        _clipClipboard = null;
+        _clipboardCut = false;
+        SelectedTrailCount = 0;
+        HasMedia = false;
+        IsPlaying = false;
+        _transitionPreviewActive = false;
+        _clipWithPendingStartTimeOption = null;
+        _keyframeSeconds = [];
+        PositionSeconds = 0;
+        DurationSeconds = 1;
+        ProbeOutput = "";
+        MetadataStatus = "Metadata: waiting for file";
+        KeyframeStatus = "Keyframes: waiting for file";
+        SelectedFileText = "No file selected";
+        ExportDirectory = null;
+        ProjectStatus = "Project: closed";
+        _autosave = new ProjectAutosave(this, _projectStore);
+        _autosave.Start();
+    }
 
     public MainWindowViewModel()
     {
-        LibVLCSharp.Shared.Core.Initialize();
-        _libVlc = new LibVLC();
-        MediaPlayer = new MediaPlayer(_libVlc);
-        MediaPlayer.Playing += MediaPlayer_OnPlaying;
-        MediaPlayer.Paused += MediaPlayer_OnPaused;
-        MediaPlayer.Stopped += MediaPlayer_OnStopped;
-
+        Player = new PlayerController(UpdatePlaybackPosition, OnPlayerPlaying, OnPlayerPaused, OnPlayerStopped,
+            EnforceSelectedClipPlaybackRange, OnPlayerEndReached);
         PlayPauseCommand = new RelayCommand(TogglePlayPause, () => HasMedia);
-
-        _playbackTimer = new DispatcherTimer
-        {
-            Interval = TimeSpan.FromMilliseconds(250)
-        };
-        _playbackTimer.Tick += (_, _) => UpdatePlaybackPosition();
-        _playbackTimer.Start();
     }
 
-    public MediaPlayer MediaPlayer { get; }
+    public PlayerController Player { get; }
+
+    public MediaPlayer MediaPlayer => Player.MediaPlayer;
 
     public RelayCommand PlayPauseCommand { get; }
 
@@ -181,7 +280,10 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     public string ExportStatus
     {
         get => _exportStatus;
-        private set => SetProperty(ref _exportStatus, value);
+        private set
+        {
+            if (SetProperty(ref _exportStatus, value)) SetExportOutcome(null);
+        }
     }
 
     public string ExportOutput
@@ -540,7 +642,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     {
         if (SelectedClip is not null)
         {
-            SelectedClip.StartSeconds = SnapToKeyframe(PositionSeconds);
+            SelectedClip.StartSeconds = SnapToKeyframe(Player.CurrentTimeSeconds);
         }
     }
 
@@ -548,7 +650,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     {
         if (SelectedClip is not null)
         {
-            SelectedClip.EndSeconds = SnapToKeyframe(PositionSeconds);
+            SelectedClip.EndSeconds = SnapToKeyframe(Player.CurrentTimeSeconds);
         }
     }
 
@@ -565,88 +667,133 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
     public async Task ExportSelectedTrailAsync(string outputPath)
     {
+        if (IsExporting) return;
         if (SelectedTrail is null)
         {
             ExportStatus = "Export: no selected trail";
+            SetExportOutcome(false);
             AppendExportOutput(ExportStatus);
             return;
         }
 
-        await ExportTrailAsync(SelectedTrail, outputPath, clearOutput: true).ConfigureAwait(true);
+        ExportDirectory = Path.GetDirectoryName(outputPath);
+        IsExporting = true;
+        SetExportOutcome(null);
+        ExportProgress = 0;
+        try
+        {
+            SetExportOutcome(await ExportTrailAsync(SelectedTrail, outputPath, clearOutput: true).ConfigureAwait(true));
+        }
+        finally { IsExporting = false; }
     }
 
-    public async Task ExportAllTrailsAsync(string outputFolder)
+    public async Task<bool> ExportAllTrailsAsync(string outputFolder)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(outputFolder);
+        if (IsExporting) return false;
 
         if (Trails.Count == 0)
         {
-            ExportStatus = "Export: no trails";
+            ExportStatus = "No trails";
+            SetExportOutcome(false);
             AppendExportOutput(ExportStatus);
-            return;
+            return false;
         }
 
-        ExportStatus = "Export: running all trails";
+        ExportStatus = "Running all trails";
+        SetExportOutcome(null);
         ExportOutput = "";
+        ExportDirectory = outputFolder;
+        IsExporting = true;
+        ExportProgress = 0;
+        var trails = Trails.ToArray();
 
         var reservedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var succeeded = 0;
         var failed = 0;
 
-        foreach (var trail in Trails)
+        try
         {
-            var outputPath = CreateUniqueOutputPath(outputFolder, trail.Name, reservedPaths);
-            reservedPaths.Add(outputPath);
-            if (await ExportTrailAsync(trail, outputPath, clearOutput: false).ConfigureAwait(true))
+            foreach (var trail in trails)
             {
-                succeeded++;
+                var outputPath = CreateUniqueOutputPath(outputFolder, trail.Name, reservedPaths);
+                reservedPaths.Add(outputPath);
+                if (await ExportTrailAsync(trail, outputPath, clearOutput: false, succeeded + failed, trails.Length).ConfigureAwait(true))
+                {
+                    succeeded++;
+                }
+                else
+                {
+                    failed++;
+                }
             }
-            else
-            {
-                failed++;
-            }
-        }
 
-        ExportStatus = failed == 0
-            ? $"Export: completed {succeeded}/{Trails.Count} trails"
-            : $"Export: completed {succeeded}/{Trails.Count}, failed {failed}";
-        AppendExportOutput(ExportStatus);
+            ExportStatus = failed == 0
+                ? $"Completed {succeeded}/{Trails.Count} trails"
+                : $"Completed {succeeded}/{Trails.Count}, failed {failed}";
+            AppendExportOutput(ExportStatus);
+            SetExportOutcome(failed == 0);
+            return failed == 0;
+        }
+        catch (Exception ex)
+        {
+            ExportStatus = $"Failed - {ex.Message}";
+            SetExportOutcome(false);
+            AppendExportOutput(ExportStatus);
+            return false;
+        }
+        finally { IsExporting = false; }
     }
 
-    private async Task<bool> ExportTrailAsync(TrailSuggestionViewModel trail, string outputPath, bool clearOutput)
+    private async Task<bool> ExportTrailAsync(TrailSuggestionViewModel trail, string outputPath, bool clearOutput,
+        int completedTrails = 0, int totalTrails = 1)
     {
         foreach (var clip in trail.Clips)
         {
-            if (clip.StartSeconds is { } start && clip.EndSeconds is { } end && start >= end)
+            if (clip.SourceIssue is { } issue)
             {
-                ExportStatus = $"Export: invalid range in {clip.FileName}";
+                ExportStatus = $"{clip.FileName} - {issue}";
+                AppendExportOutput(ExportStatus);
+                return false;
+            }
+            var start = clip.StartSeconds ?? 0;
+            var end = clip.EndSeconds ?? clip.Duration.TotalSeconds;
+            if (!double.IsFinite(start) || !double.IsFinite(end) || start < 0 || start >= end || end > clip.Duration.TotalSeconds)
+            {
+                ExportStatus = $"Invalid range in {clip.FileName}";
                 AppendExportOutput(ExportStatus);
                 return false;
             }
         }
 
         var ranges = trail.Clips
-            .Select(static clip => new ExportClipRange(clip.Path, clip.StartSeconds, clip.EndSeconds))
+            .Select(static clip => new ExportClipRange(clip.Path, clip.StartSeconds, clip.EndSeconds, clip.Duration.TotalSeconds))
             .ToArray();
 
-        ExportStatus = $"Export: running {trail.Name}";
+        ExportStatus = $"Running {trail.Name}";
         if (clearOutput)
         {
             ExportOutput = "";
         }
 
         var progress = new Progress<string>(AppendExportOutput);
+        var visibleProgress = new Progress<ExportProgressUpdate>(update =>
+        {
+            ExportProgress = 100 * (completedTrails + update.Fraction) / totalTrails;
+            ExportProgressText = $"{ExportProgress:0}% - Trail {completedTrails + 1}/{totalTrails}: {trail.Name} - {update.Stage}";
+        });
 
         try
         {
-            await _exportService.ExportAsync(ranges, outputPath, progress).ConfigureAwait(true);
-            ExportStatus = $"Export: completed {outputPath}";
+            await _exportService.ExportAsync(ranges, outputPath, progress, detailedProgress: visibleProgress).ConfigureAwait(true);
+            ExportProgress = 100d * (completedTrails + 1) / totalTrails;
+            ExportStatus = $"Completed {outputPath}";
             AppendExportOutput(ExportStatus);
             return true;
         }
         catch (Exception ex)
         {
-            ExportStatus = $"Export: failed {trail.Name} - {ex.Message}";
+            ExportStatus = $"Failed {trail.Name} - {ex.Message}";
             AppendExportOutput(ExportStatus);
             return false;
         }
@@ -732,6 +879,9 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         string operationName,
         Func<CancellationToken, Task<FolderTrailImportResult>> import)
     {
+        if (!CanEditProject) return;
+        _isImporting = true;
+        OnPropertyChanged(nameof(CanEditProject));
         _folderImportCancellation?.Cancel();
         _folderImportCancellation?.Dispose();
         _folderImportCancellation = new CancellationTokenSource();
@@ -739,6 +889,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         Trails.Clear();
         SelectedTrail = null;
         SelectedClip = null;
+        _mediaSession.ClearKeyframeCache();
         FolderImportStatus = $"{operationName}: scanning and indexing keyframes";
 
         try
@@ -769,6 +920,15 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         {
             FolderImportStatus = $"{operationName}: canceled";
         }
+        catch (Exception ex)
+        {
+            FolderImportStatus = $"{operationName}: failed - {ex.Message}";
+        }
+        finally
+        {
+            _isImporting = false;
+            OnPropertyChanged(nameof(CanEditProject));
+        }
     }
 
     public void SeekFromUser(double requestedSeconds)
@@ -786,8 +946,9 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     public void PreviewClipFromStart(ClipTimelineViewModel clip)
     {
         SelectClip(clip);
+        if (!HasMedia) return;
         _transitionPreviewActive = false;
-        SeekToSeconds(GetPlaybackStartSeconds(clip));
+        OpenClipWithVlc(clip, GetPlaybackStartSeconds(clip), stopBeforePlay: false, playAfterOpen: true);
     }
 
     public void PreviewClipTransition(ClipTimelineViewModel clip)
@@ -803,7 +964,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
     private void StartTransitionPreview(ClipTimelineViewModel clip)
     {
-        if (!ReferenceEquals(SelectedClip, clip))
+        if (!HasMedia || !ReferenceEquals(SelectedClip, clip))
         {
             return;
         }
@@ -812,16 +973,23 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         _stoppedAtSelectedEnd = false;
         PreloadNextClipAfter(clip);
 
-        var start = GetPlaybackStartSeconds(clip);
-        var end = GetPlaybackEndSeconds(clip);
-        var previewStart = Math.Max(start, end - TransitionPreviewGap);
-        SeekToSeconds(previewStart);
+        var previewStart = GetPlaybackRange(clip).PreviewStartSeconds(TransitionPreviewGap);
+        // start-time is applied as VLC opens the input; a seek immediately after
+        // Play can otherwise be ignored or overwritten by the original start-time.
+        OpenClipWithVlc(clip, previewStart, stopBeforePlay: false, playAfterOpen: true);
         PlaybackStatus = $"Playback: join preview from {FormatSeconds(previewStart)}";
     }
 
     private void OpenClipForPlayback(ClipTimelineViewModel clip)
     {
         ThrowIfDisposed();
+        if (clip.SourceIssue is { } issue)
+        {
+            Player.Stop();
+            HasMedia = false;
+            PlaybackStatus = $"Playback: {issue}";
+            return;
+        }
 
         _probeCancellation?.Cancel();
         SelectedFileText = clip.Path;
@@ -846,6 +1014,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
         await Dispatcher.UIThread.InvokeAsync(() =>
         {
+            if (_isDisposed || !Trails.Any(trail => trail.Clips.Contains(clip))) return;
             clip.ApplyKeyframeIndex(index);
 
             if (ReferenceEquals(SelectedClip, clip))
@@ -883,29 +1052,21 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         }
 
         _isDisposed = true;
-        _playbackTimer.Stop();
+        _autosave?.Dispose();
+
         _probeCancellation?.Cancel();
         _probeCancellation?.Dispose();
         _folderImportCancellation?.Cancel();
         _folderImportCancellation?.Dispose();
-        StopAndReleasePlayback();
-        MediaPlayer.Playing -= MediaPlayer_OnPlaying;
-        MediaPlayer.Paused -= MediaPlayer_OnPaused;
-        MediaPlayer.Stopped -= MediaPlayer_OnStopped;
-        MediaPlayer.Dispose();
-        _libVlc.Dispose();
+        _clipWithPendingStartTimeOption = null;
+
+        Player.Dispose();
     }
 
     private void OpenWithVlc(string path)
     {
         _stoppedAtSelectedEnd = false;
-        MediaPlayer.Stop();
-        _currentMedia?.Dispose();
-        _preloadedNextMedia?.Dispose();
-        _preloadedNextMedia = null;
-        _preloadedNextClip = null;
-        _currentMedia = new LibVLCSharp.Shared.Media(_libVlc, path, FromType.FromPath);
-        MediaPlayer.Play(_currentMedia);
+        Player.Open(path);
         _clipWithPendingStartTimeOption = null;
     }
 
@@ -913,27 +1074,9 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     {
         _stoppedAtSelectedEnd = false;
 
-        if (!MediaPlayer.IsPlaying)
-        {
-            MediaPlayer.SetPause(false);
-        }
-
-        if (ReferenceEquals(_preloadedNextClip, clip) && _preloadedNextMedia is not null)
-        {
-            _currentMedia?.Dispose();
-            _currentMedia = _preloadedNextMedia;
-            _preloadedNextMedia = null;
-            _preloadedNextClip = null;
-        }
-        else
-        {
-            _currentMedia?.Dispose();
-            _currentMedia = CreateClipMedia(clip, startSeconds);
-        }
-
         var playbackGeneration = ++_openPlaybackGeneration;
         _pauseWhenPlayingGeneration = playAfterOpen ? null : playbackGeneration;
-        MediaPlayer.Play(_currentMedia);
+        Player.OpenClip(clip, startSeconds);
         _clipWithPendingStartTimeOption = startSeconds > 0 ? clip : null;
         if (playAfterOpen)
         {
@@ -945,55 +1088,46 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         }
     }
 
-    private void MediaPlayer_OnPlaying(object? sender, EventArgs e)
+    private void OnPlayerPlaying()
     {
-        Dispatcher.UIThread.Post(() =>
+        if (_isDisposed || _pauseWhenPlayingGeneration != _openPlaybackGeneration)
         {
-            if (_isDisposed || _pauseWhenPlayingGeneration != _openPlaybackGeneration)
+            if (!_isDisposed)
             {
-                if (!_isDisposed)
-                {
-                    IsPlaying = true;
-                    PlaybackStatus = "Playback: playing";
-                }
-
-                return;
+                IsPlaying = true;
+                PlaybackStatus = "Playback: playing";
             }
 
-            _pauseWhenPlayingGeneration = null;
-            MediaPlayer.Pause();
-            PositionSeconds = Math.Clamp(MediaPlayer.Time / 1000d, 0, DurationSeconds);
-            PlaybackStatus = $"Playback: paused at {PositionText}";
-        });
+            return;
+        }
+
+        _pauseWhenPlayingGeneration = null;
+        Player.Pause();
+        PositionSeconds = Math.Clamp(MediaPlayer.Time / 1000d, 0, DurationSeconds);
+        PlaybackStatus = $"Playback: paused at {PositionText}";
     }
 
-    private void MediaPlayer_OnPaused(object? sender, EventArgs e)
+    private void OnPlayerPaused()
     {
-        Dispatcher.UIThread.Post(() =>
+        if (_isDisposed)
         {
-            if (_isDisposed)
-            {
-                return;
-            }
+            return;
+        }
 
-            IsPlaying = false;
-            SetPlaybackPositionFromPlayer();
-            PlaybackStatus = $"Playback: paused at {PositionText}";
-        });
+        IsPlaying = false;
+        SetPlaybackPositionFromPlayer();
+        PlaybackStatus = $"Playback: paused at {PositionText}";
     }
 
-    private void MediaPlayer_OnStopped(object? sender, EventArgs e)
+    private void OnPlayerStopped()
     {
-        Dispatcher.UIThread.Post(() =>
+        if (_isDisposed)
         {
-            if (_isDisposed)
-            {
-                return;
-            }
+            return;
+        }
 
-            IsPlaying = false;
-            PlaybackStatus = "Playback: stopped";
-        });
+        IsPlaying = false;
+        PlaybackStatus = "Playback: stopped";
     }
 
     private async Task ProbeAsync(string path, CancellationToken cancellationToken)
@@ -1039,20 +1173,16 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             return;
         }
 
-        if (MediaPlayer.IsPlaying)
+        Player.TogglePlayPause(() =>
         {
-            MediaPlayer.Pause();
-        }
-        else
-        {
-            if (SelectedClip is not null && PositionSeconds >= GetPlaybackEndSeconds() - 0.000_001)
+            if (SelectedClip is not null && (Player.IsAtEnd || _stoppedAtSelectedEnd ||
+                Player.CurrentTimeSeconds >= GetPlaybackEndSeconds() - 0.000_001))
             {
                 SeekToSeconds(GetPlaybackStartSeconds(), playAfterSeek: false);
             }
 
             _stoppedAtSelectedEnd = false;
-            MediaPlayer.Play();
-        }
+        });
     }
 
     private void SeekToSeconds(double seconds, bool playAfterSeek = true)
@@ -1065,12 +1195,12 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         var boundedSeconds = Math.Clamp(seconds, 0, DurationSeconds);
         _stoppedAtSelectedEnd = false;
         _clipWithPendingStartTimeOption = null;
-        MediaPlayer.Pause();
-        MediaPlayer.Time = (long)Math.Round(boundedSeconds * 1000, MidpointRounding.AwayFromZero);
+        Player.Pause();
+        Player.Seek(boundedSeconds);
         SetPlaybackPositionFromPlayer();
         if (playAfterSeek)
         {
-            MediaPlayer.Play();
+            Player.Play();
         }
     }
 
@@ -1116,8 +1246,6 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             DurationSeconds = MediaPlayer.Length / 1000d;
         }
 
-        EnforceSelectedClipPlaybackRange();
-
     }
 
     private void SetPlaybackPositionFromPlayer()
@@ -1135,20 +1263,22 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
     private void EnforceSelectedClipPlaybackRange()
     {
-        if (SelectedClip is not { } clip)
+        if (!HasMedia || _stoppedAtSelectedEnd || SelectedClip is not { } clip)
         {
             return;
         }
 
         var start = GetPlaybackStartSeconds(clip);
         var end = GetPlaybackEndSeconds(clip);
+        var actualSeconds = Player.CurrentTimeSeconds;
+        if (actualSeconds < 0) return; // VLC has not reported a valid clock yet.
 
-        if (ReferenceEquals(_clipWithPendingStartTimeOption, clip) && PositionSeconds >= start)
+        if (ReferenceEquals(_clipWithPendingStartTimeOption, clip) && actualSeconds >= start)
         {
             _clipWithPendingStartTimeOption = null;
         }
 
-        if (PositionSeconds < start)
+        if (actualSeconds < start)
         {
             if (ReferenceEquals(_clipWithPendingStartTimeOption, clip))
             {
@@ -1159,10 +1289,18 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             return;
         }
 
-        if (PositionSeconds >= end)
+        // Full-file playback ends on VLC's terminal event, not a comparison to
+        // metadata duration: the final clock sample can be below that duration.
+        if (GetPlaybackRange(clip).HasReachedEnd(actualSeconds, nativeEndReached: false))
         {
             HandleSelectedClipEnd(clip, end);
         }
+    }
+
+    private void OnPlayerEndReached()
+    {
+        if (_isDisposed || !HasMedia || SelectedClip is not { } clip) return;
+        HandleSelectedClipEnd(clip, GetPlaybackEndSeconds(clip));
     }
 
     private void HandleSelectedClipEnd(ClipTimelineViewModel clip, double end)
@@ -1180,7 +1318,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         }
 
         _transitionPreviewActive = false;
-        MediaPlayer.Pause();
+        Player.Pause();
         PositionSeconds = end;
         PlaybackStatus = $"Playback: reached selected end at {FormatSeconds(end)}";
     }
@@ -1250,31 +1388,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     private void PreloadNextClipAfter(ClipTimelineViewModel clip)
     {
         var nextClip = TryGetNextClip(clip);
-        if (ReferenceEquals(_preloadedNextClip, nextClip))
-        {
-            return;
-        }
-
-        _preloadedNextMedia?.Dispose();
-        _preloadedNextMedia = null;
-        _preloadedNextClip = nextClip;
-
-        if (nextClip is not null)
-        {
-            _preloadedNextMedia = CreateClipMedia(nextClip, GetPlaybackStartSeconds(nextClip));
-        }
-    }
-
-    private LibVLCSharp.Shared.Media CreateClipMedia(ClipTimelineViewModel clip, double startSeconds)
-    {
-        var media = new LibVLCSharp.Shared.Media(_libVlc, clip.Path, FromType.FromPath);
-        var boundedStart = Math.Clamp(startSeconds, 0, Math.Max(0, clip.Duration.TotalSeconds));
-        if (boundedStart > 0)
-        {
-            media.AddOption($":start-time={boundedStart.ToString("0.###", CultureInfo.InvariantCulture)}");
-        }
-
-        return media;
+        Player.Preload(nextClip, nextClip is null ? 0 : GetPlaybackStartSeconds(nextClip));
     }
 
     private double ClampToSelectedClipRange(double seconds)
@@ -1299,25 +1413,16 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
 
     private double GetPlaybackStartSeconds(ClipTimelineViewModel clip)
     {
-        return Math.Clamp(clip.StartSeconds ?? 0, 0, DurationSeconds);
+        return GetPlaybackRange(clip).StartSeconds;
     }
 
     private double GetPlaybackEndSeconds(ClipTimelineViewModel clip)
     {
-        var end = clip.EndSeconds ?? DurationSeconds;
-        return Math.Clamp(end, GetPlaybackStartSeconds(clip), DurationSeconds);
+        return GetPlaybackRange(clip).EndSeconds;
     }
 
-    private void StopAndReleasePlayback()
-    {
-        MediaPlayer.Stop();
-        _currentMedia?.Dispose();
-        _preloadedNextMedia?.Dispose();
-        _currentMedia = null;
-        _preloadedNextMedia = null;
-        _preloadedNextClip = null;
-        _clipWithPendingStartTimeOption = null;
-    }
+    private static PlaybackRange GetPlaybackRange(ClipTimelineViewModel clip) =>
+        new(clip.Duration.TotalSeconds, clip.StartSeconds, clip.EndSeconds);
 
     private static double? ReadDurationSeconds(FfprobeResult metadata)
     {
@@ -1480,6 +1585,20 @@ public sealed class TrailSuggestionViewModel : ObservableObject
 
 public sealed class ClipTimelineViewModel(Vmerger.Core.Media.SourceClip clip) : ObservableObject
 {
+    public string? SourceIssue
+    {
+        get
+        {
+            try
+            {
+                var info = new FileInfo(Path);
+                if (!info.Exists) return "Source missing";
+                return info.Length != SourceClip.SizeBytes || info.LastWriteTimeUtc != SourceClip.LastModified.UtcDateTime
+                    ? "Source changed since import; re-import required" : null;
+            }
+            catch (Exception ex) { return $"Source unavailable: {ex.Message}"; }
+        }
+    }
     private string _keyframeSummary = "Keyframes: queued";
     private IReadOnlyList<double> _keyframeSeconds = [];
     private double? _startSeconds;
