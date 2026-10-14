@@ -1,0 +1,20 @@
+<Window x:Class="Vmerger.Desktop.CloseProjectDialog"
+        xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Close Project?"
+        Width="440" SizeToContent="Height"
+        CanResize="False"
+        WindowStartupLocation="CenterOwner">
+    <Grid Margin="24" RowDefinitions="Auto,Auto,Auto" RowSpacing="16">
+        <TextBlock Text="Export completed. Close project?"
+                   FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap" />
+        <TextBlock Grid.Row="1" Classes="secondary" TextWrapping="Wrap"
+                   Text="This clears the saved project. Recordings and exports stay." />
+        <Grid Grid.Row="2" Width="340" ColumnDefinitions="*,*" ColumnSpacing="12" HorizontalAlignment="Center">
+            <Button Grid.Column="0" Classes="destructive" Content="Yes, Close Project"
+                    HorizontalAlignment="Stretch" Click="CloseProject_OnClick" />
+            <Button Grid.Column="1" Content="No, Keep Project" IsCancel="True" IsDefault="True"
+                    HorizontalAlignment="Stretch" Click="KeepProject_OnClick" />
+        </Grid>
+    </Grid>
+</Window>

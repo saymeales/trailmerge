@@ -12,11 +12,7 @@ public sealed class PlayerController : IDisposable
     private ClipTimelineViewModel? _preloadedNextClip;
     private readonly LibVLC _libVlc;
     private readonly DispatcherTimer _timer;
-    private readonly Action _playing;
-    private readonly Action _paused;
-    private readonly Action _stopped;
-    private readonly Action _timeChanged;
-    private readonly Action _endReached;
+    private readonly IPlayerCallbacks _callbacks;
     private bool _isDisposed;
     private long _playbackGeneration;
     private int _pauseRequested;
@@ -25,14 +21,9 @@ public sealed class PlayerController : IDisposable
     public bool IsAtEnd { get; private set; }
     public double CurrentTimeSeconds => MediaPlayer.Time / 1000d;
 
-    public PlayerController(Action updatePosition, Action playing, Action paused, Action stopped,
-        Action timeChanged, Action endReached)
+    public PlayerController(IPlayerCallbacks callbacks)
     {
-        _playing = playing;
-        _paused = paused;
-        _stopped = stopped;
-        _timeChanged = timeChanged;
-        _endReached = endReached;
+        _callbacks = callbacks;
         LibVLCSharp.Shared.Core.Initialize();
         _libVlc = new LibVLC();
         MediaPlayer = new MediaPlayer(_libVlc);
@@ -42,7 +33,7 @@ public sealed class PlayerController : IDisposable
         MediaPlayer.TimeChanged += OnTimeChanged;
         MediaPlayer.EndReached += OnEndReached;
         _timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
-        _timer.Tick += (_, _) => updatePosition();
+        _timer.Tick += OnPresentationTick;
         _timer.Start();
     }
 
@@ -93,7 +84,7 @@ public sealed class PlayerController : IDisposable
         if (paused) Pause();
         else MediaPlayer.SetPause(false);
     }
-    public void TogglePlayPause(Action beforeResume)
+    public void TogglePlayPause()
     {
         if (MediaPlayer.IsPlaying)
         {
@@ -101,7 +92,7 @@ public sealed class PlayerController : IDisposable
             return;
         }
 
-        beforeResume();
+        _callbacks.BeforePlaybackResume();
         Play();
     }
     public void Seek(double seconds)
@@ -112,20 +103,35 @@ public sealed class PlayerController : IDisposable
         MediaPlayer.Time = (long)Math.Round(seconds * 1000, MidpointRounding.AwayFromZero);
     }
 
-    private void Dispatch(Action action)
+    private void OnPresentationTick(object? sender, EventArgs e) => _callbacks.UpdatePlaybackPosition();
+
+    private void Dispatch(PlayerNotification notification, bool automaticEnd = false)
     {
         var generation = Interlocked.Read(ref _playbackGeneration);
-        Dispatcher.UIThread.Post(() =>
+        Dispatcher.UIThread.Post(new PendingNotification(this, notification, generation, automaticEnd).Deliver);
+    }
+
+    private void DeliverNotification(PlayerNotification notification, long generation, bool automaticEnd)
+    {
+        if (_isDisposed || generation != Interlocked.Read(ref _playbackGeneration)) return;
+        switch (notification)
         {
-            if (!_isDisposed && generation == Interlocked.Read(ref _playbackGeneration)) action();
-        });
+            case PlayerNotification.Playing: _callbacks.OnPlayerPlaying(); break;
+            case PlayerNotification.Paused:
+                _callbacks.OnPlayerPaused();
+                if (automaticEnd && generation == Interlocked.Read(ref _playbackGeneration)) SignalEnd();
+                break;
+            case PlayerNotification.Stopped: _callbacks.OnPlayerStopped(); break;
+            case PlayerNotification.TimeChanged: _callbacks.OnPlayerTimeChanged(); break;
+            case PlayerNotification.EndReached: SignalEnd(); break;
+        }
     }
 
     private void OnPlaying(object? sender, EventArgs e)
     {
         Volatile.Write(ref _inputReady, 1);
         Interlocked.Exchange(ref _pauseRequested, 0);
-        Dispatch(_playing);
+        Dispatch(PlayerNotification.Playing);
     }
 
     private void OnPaused(object? sender, EventArgs e)
@@ -134,27 +140,23 @@ public sealed class PlayerController : IDisposable
         // With play-and-pause, an unrequested pause is VLC's EOF pause.
         // Capture the reason on the native event thread before posting to the UI.
         var requested = Interlocked.Exchange(ref _pauseRequested, 0) != 0;
-        Dispatch(() =>
-        {
-            _paused();
-            if (!requested) SignalEnd();
-        });
+        Dispatch(PlayerNotification.Paused, automaticEnd: !requested);
     }
-    private void OnStopped(object? sender, EventArgs e) => Dispatch(_stopped);
+    private void OnStopped(object? sender, EventArgs e) => Dispatch(PlayerNotification.Stopped);
     private void OnTimeChanged(object? sender, MediaPlayerTimeChangedEventArgs e)
     {
-        if (Volatile.Read(ref _inputReady) != 0) Dispatch(_timeChanged);
+        if (Volatile.Read(ref _inputReady) != 0) Dispatch(PlayerNotification.TimeChanged);
     }
     private void OnEndReached(object? sender, EventArgs e)
     {
-        if (Volatile.Read(ref _inputReady) != 0) Dispatch(SignalEnd);
+        if (Volatile.Read(ref _inputReady) != 0) Dispatch(PlayerNotification.EndReached);
     }
 
     private void SignalEnd()
     {
         if (IsAtEnd) return;
         IsAtEnd = true;
-        _endReached();
+        _callbacks.OnPlayerEndReached();
     }
 
     public void Dispose()
@@ -162,6 +164,7 @@ public sealed class PlayerController : IDisposable
         if (_isDisposed) return;
         _isDisposed = true;
         _timer.Stop();
+        _timer.Tick -= OnPresentationTick;
         MediaPlayer.Playing -= OnPlaying;
         MediaPlayer.Paused -= OnPaused;
         MediaPlayer.Stopped -= OnStopped;
@@ -228,5 +231,13 @@ public sealed class PlayerController : IDisposable
         }
 
         Play(_currentMedia);
+    }
+
+    private enum PlayerNotification { Playing, Paused, Stopped, TimeChanged, EndReached }
+
+    private sealed record PendingNotification(PlayerController Owner, PlayerNotification Notification,
+        long Generation, bool AutomaticEnd)
+    {
+        public void Deliver() => Owner.DeliverNotification(Notification, Generation, AutomaticEnd);
     }
 }

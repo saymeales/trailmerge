@@ -93,6 +93,50 @@ try
     var updates = new CollectedProgress<ExportProgressUpdate>();
     var logs = new CollectedProgress<string>();
     var export = new StreamCopyExportService(Environment.ProcessPath!);
+    var editorCallbacks = new TestEditorCallbacks();
+    var editor = new TrailEditorViewModel(editorCallbacks);
+    editor.AddTrail();
+    var editedTrail = editor.SelectedTrail!;
+    editedTrail.Clips.Add(clip);
+    editor.SelectedClip = clip;
+    editor.DuplicateSelectedClip();
+    Check(editorCallbacks.Added == 1 && editor.SelectedClip!.StartSeconds is null, "duplicate initializes a full range");
+    editor.CopySelectedClip();
+    editor.PasteClipToSelectedTrail();
+    Check(editedTrail.Clips.Count == 3 && editorCallbacks.Added == 2, "copy/paste uses editor callbacks");
+    editor.SelectedClip = clip;
+    editor.CutSelectedClip();
+    editor.AddTrail();
+    var destination = editor.SelectedTrail!;
+    editor.PasteClipToSelectedTrail();
+    Check(destination.Clips[0] == clip && clip.StartSeconds == 4 && clip.EndSeconds == 8, "cut/move preserves trims");
+    editor.SelectClip(editedTrail, editedTrail.Clips[1]);
+    editor.SplitSelectedTrailBeforeSelectedClip();
+    Check(editor.Trails.Count == 3 && editor.SelectedTrail!.Clips.Count == 1, "split preserves contents");
+    var selectionNotifications = editorCallbacks.Selections;
+    editor.SelectWithoutOpening(destination, clip);
+    Check(editorCallbacks.Selections == selectionNotifications && editor.SelectedClip == clip,
+        "playback selection does not reopen a clip");
+    editor.MergeSelectedTrails(editor.Trails.ToArray());
+    Check(editor.Trails.Count == 1 && editor.Trails[0].Clips.Count == 3 && editorCallbacks.LastStatus!.StartsWith("Merge:"),
+        "merge and edit status callback");
+    editor.SelectedTrailCount = 2;
+    Check(editor.CanMergeSelectedTrails, "merge availability");
+    var emptyExports = new ExportViewModel(new TrailEditorViewModel(editorCallbacks), export);
+    Check(!await emptyExports.ExportAllTrailsAsync(directory) && emptyExports.HasExportError,
+        "empty export does not request project close");
+    var exportFolder = Path.Combine(directory, "batch");
+    editor.Trails[0].Name = "Trail/Export";
+    var exports = new ExportViewModel(editor, export);
+    Check(await exports.ExportAllTrailsAsync(exportFolder) && exports.ExportSucceeded && !exports.IsExporting,
+        "extracted batch exporter reports success and restores idle state");
+    Check(File.Exists(Path.Combine(exportFolder, "Trail_Export.mp4")), "sanitized trail export name");
+    Check(await exports.ExportAllTrailsAsync(exportFolder) && File.Exists(Path.Combine(exportFolder, "Trail_Export-2.mp4")),
+        "batch export resolves collisions");
+    editor.AddTrail(); // An empty trail fails the batch and must suppress the close prompt.
+    Check(!await exports.ExportAllTrailsAsync(exportFolder) && exports.HasExportError && !exports.IsExporting,
+        "partial batch failure suppresses project close");
+    Console.WriteLine("PASS: extracted editor selection/callbacks, duplicate/move/split/merge, export outcomes and collisions.");
     var output = Path.Combine(directory, "export.mp4");
     await export.ExportAsync([new ExportClipRange(sourcePath, null, null, 4)], output, logs, detailedProgress: updates);
     Check(updates.Items.Any(update => Math.Abs(update.Fraction - 0.4) < 0.0001), "microsecond progress parsing");
@@ -101,7 +145,7 @@ try
     Check(updates.Items.All(update => update.Fraction is >= 0 and <= 1), "bounded progress");
     Check(logs.Items.Where(line => line.StartsWith("ffmpeg ")).All(line => line.Contains("-c copy") && line.Contains("-progress pipe:1")),
         "stream-copy and progress process arguments");
-    Check(Directory.GetDirectories(directory).Length == 0, "export staging cleanup");
+    Check(!Directory.GetDirectories(directory).Any(folder => Path.GetFileName(folder).StartsWith(".vmerger-")), "export staging cleanup");
     try
     {
         await export.ExportAsync([new ExportClipRange(sourcePath, null, null, 4)], output);
@@ -115,7 +159,8 @@ try
         throw new Exception("Failed process accepted");
     }
     catch (ExportException) { }
-    Check(!File.Exists(Path.Combine(directory, "failed-output.mp4")) && Directory.GetDirectories(directory).Length == 0,
+    Check(!File.Exists(Path.Combine(directory, "failed-output.mp4")) &&
+        !Directory.GetDirectories(directory).Any(folder => Path.GetFileName(folder).StartsWith(".vmerger-")),
         "failed export preserves outputs and cleans staging");
     Console.WriteLine("PASS: autosave, edits, settings, JSON restore, source preservation, cleanup, invalid project checks.");
     Console.WriteLine("PASS: progress/process orchestration using a simulated ffmpeg process (no real media validation).");
@@ -149,4 +194,14 @@ sealed class CollectedProgress<T> : IProgress<T>
     private readonly List<T> _items = [];
     public T[] Items { get { lock (_items) return _items.ToArray(); } }
     public void Report(T value) { lock (_items) _items.Add(value); }
+}
+
+sealed class TestEditorCallbacks : ITrailEditorCallbacks
+{
+    public int Selections { get; private set; }
+    public int Added { get; private set; }
+    public string? LastStatus { get; private set; }
+    public void OnSelectedClipChanged(ClipTimelineViewModel? previous, ClipTimelineViewModel? current) => Selections++;
+    public void OnClipAdded(ClipTimelineViewModel clip) => Added++;
+    public void ReportEditStatus(string message) => LastStatus = message;
 }

@@ -46,7 +46,13 @@ The highlighted export panel shows overall estimated percentage, current trail, 
 
 ## Player component refactor
 
-Native playback, transport controls, media switching/preloading, UI event dispatch, and VLC disposal are owned by PlayerController. MainWindowViewModel retains trail selection and trim rules; existing view bindings are preserved. Validation: solution build only; play/pause, seeking, clip transitions, and window-close cleanup require a manual GUI check with real recordings.
+`MainWindowViewModel` coordinates import and project recovery and forwards existing view bindings. `TrailEditorViewModel` owns trail collections, selection, grouping edits, and the clip clipboard. `PlaybackViewModel` owns transport presentation, seeking, trim rules, preview/continuation, and metadata diagnostics. `ExportViewModel` owns export planning/execution, output naming, logs, progress, and completion state. `TrailSuggestionViewModel` and `ClipTimelineViewModel` have separate files.
+
+`PlayerController` owns VLC resources and native event dispatch. Its callback contract is `IPlayerCallbacks`, implemented by `PlaybackViewModel`, with named notifications and a resume-preparation callback. It accepts no `Action` callbacks. `ITrailEditorCallbacks` connects editor selection, added clips, and edit status to the coordinator. Native notifications still carry a playback generation so stale queued events are ignored.
+
+`CloseProjectDialog.axaml` defines the post-export-all dialog. Its text wraps within a fixed width, height follows content, and two equal-width buttons are centered below the text. Enter/Escape keep the project; explicitly choosing Yes clears it. The prompt remains limited to a fully successful batch.
+
+Validation: solution build, existing persistence/range/process checks, and focused editor/export checks for callbacks, duplicate/copy/paste/move/split/merge, output collisions, and failed-batch close suppression. Export checks use a simulated child process. Playback, seeking, clip transitions, dialog appearance, and window-close cleanup require a manual GUI check with real recordings.
 
 ## Color scheme
 

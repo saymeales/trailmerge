@@ -271,26 +271,7 @@ public sealed partial class MainWindow : Window
 
         if (await _viewModel.ExportAllTrailsAsync(path))
         {
-            var dialog = new Window
-            {
-                Title = "Close Project?", Width = 400, Height = 180,
-                CanResize = false, WindowStartupLocation = WindowStartupLocation.CenterOwner
-            };
-            var yes = new Button { Content = "Yes, Close Project", MinWidth = 130 };
-            yes.Classes.Add("destructive");
-            var no = new Button { Content = "No, Keep Project", MinWidth = 130 };
-            yes.Click += (_, _) => dialog.Close(true);
-            no.Click += (_, _) => dialog.Close(false);
-            dialog.Content = new StackPanel
-            {
-                Margin = new Avalonia.Thickness(20), Spacing = 16,
-                Children =
-                {
-                    new TextBlock { Text = "Export completed. Close project?", FontSize = 18 },
-                    new TextBlock { Text = "This clears the saved project. Recordings and exports stay." },
-                    new StackPanel { Orientation = Avalonia.Layout.Orientation.Horizontal, Spacing = 12, Children = { yes, no } }
-                }
-            };
+            var dialog = new CloseProjectDialog();
             if (await dialog.ShowDialog<bool>(this)) await _viewModel.CloseProjectAsync();
         }
     }
