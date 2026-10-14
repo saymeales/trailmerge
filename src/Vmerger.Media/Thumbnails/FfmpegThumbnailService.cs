@@ -47,7 +47,7 @@ public sealed class FfmpegThumbnailService(string ffmpegPath = "ffmpeg")
     {
         var startInfo = new ProcessStartInfo
         {
-            FileName = ffmpegPath,
+            FileName = MediaToolPaths.Resolve(ffmpegPath),
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,

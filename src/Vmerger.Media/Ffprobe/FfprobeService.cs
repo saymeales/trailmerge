@@ -68,7 +68,7 @@ public sealed class FfprobeService(string ffprobePath = "ffprobe")
     {
         var startInfo = new ProcessStartInfo
         {
-            FileName = ffprobePath,
+            FileName = MediaToolPaths.Resolve(ffprobePath),
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,

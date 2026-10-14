@@ -1,5 +1,24 @@
 bin/
 obj/
+artifacts/
 /packages/
 riderModule.iml
 /_ReSharper.Caches/
+
+# Local instructions and IDE state
+AGENTS.md
+.idea/
+.vs/
+.vscode/
+*.user
+*.suo
+*.DotSettings.user
+
+# Local tooling and temporary files
+.agents/
+.codex/
+.aws/
+tmp/
+.env
+.env.*
+!.env.example
